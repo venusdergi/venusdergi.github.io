@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReelsPDF Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --accent:#ff2d55; --muted: rgba(255,255,255,0.7); }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background:#000;
+      color:#fff;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 520px;
+      border: 1px solid #333;
+      border-radius: 24px;
+      background: rgba(20,20,20,0.86);
+      backdrop-filter: blur(20px);
+      padding: 22px;
+    }
+    .title { font-size: 18px; font-weight: 900; }
+    .sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
+    .field { margin-top: 16px; }
+    .field label { display:block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .field input, .field textarea {
+      width:100%;
+      background:#0e0e0e;
+      border: 1px solid #2a2a2a;
+      color:#fff;
+      padding: 12px 14px;
+      border-radius: 14px;
+      outline:none;
+      font-size: 14px;
+    }
+    textarea { resize: vertical; min-height: 92px; }
+    .row { display:flex; gap: 10px; margin-top: 16px; }
+    .btn {
+      flex: 1;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 14px;
+      font-weight: 900;
+      cursor:pointer;
+      font-size: 14px;
+    }
+    .btn.primary { background:#fff; color:#000; }
+    .btn.ghost { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.14); }
+    .error { margin-top: 12px; color: #ff6b6b; font-size: 13px; min-height: 18px; text-align:center; }
+    .ok { margin-top: 12px; color: #4cd964; font-size: 13px; min-height: 18px; text-align:center; }
+    .sep { height: 1px; background: rgba(255,255,255,0.1); margin: 18px 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">Admin Panel</div>
+    <div class="sub">Sabit admin ile giriş yap ve PDF reels yükle.</div>
+
+    <div id="login-area">
+      <div class="field">
+        <label for="email">Admin e-posta</label>
+        <input id="email" type="email" placeholder="admin@example.com" />
+      </div>
+      <div class="field">
+        <label for="password">Admin şifre</label>
+        <input id="password" type="password" placeholder="***" />
+      </div>
+      <div class="row">
+        <button class="btn primary" onclick="adminLogin()">Giriş</button>
+        <button class="btn ghost" onclick="goHome()">Ana Sayfa</button>
+      </div>
+      <div class="error" id="login-error"></div>
+    </div>
+
+    <div id="upload-area" style="display:none;">
+      <div class="sep"></div>
+
+      <div class="field">
+        <label for="title">Başlık</label>
+        <input id="title" type="text" maxlength="80" placeholder="Örn: Ders Notları - 1" />
+      </div>
+      <div class="field">
+        <label for="description">Açıklama</label>
+        <textarea id="description" maxlength="500" placeholder="Instagram tarzı açıklama...\n#etiket"></textarea>
+      </div>
+      <div class="field">
+        <label for="pdf">PDF</label>
+        <input id="pdf" type="file" accept="application/pdf" />
+      </div>
+
+      <div class="row">
+        <button class="btn primary" onclick="uploadReel()">Yükle</button>
+        <button class="btn ghost" onclick="adminLogout()">Çıkış</button>
+      </div>
+
+      <div class="error" id="upload-error"></div>
+      <div class="ok" id="upload-ok"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = (window.API_BASE_URL || '').replace(/\/$/, '');
+    const ADMIN_TOKEN_KEY = 'reelspdf_admin_token';
+
+    function apiUrl(path) {
+      if (!API_BASE_URL) return path;
+      return `${API_BASE_URL}${path}`;
+    }
+
+    function setAdminToken(token) {
+      if (!token) return;
+      localStorage.setItem(ADMIN_TOKEN_KEY, token);
+    }
+
+    function getAdminToken() {
+      return localStorage.getItem(ADMIN_TOKEN_KEY);
+    }
+
+    function setLoginError(msg) { document.getElementById('login-error').innerText = msg || ''; }
+    function setUploadError(msg) { document.getElementById('upload-error').innerText = msg || ''; }
+    function setUploadOk(msg) { document.getElementById('upload-ok').innerText = msg || ''; }
+
+    function goHome() { window.location.href = '/'; }
+
+    async function adminLogin() {
+      try {
+        setLoginError('');
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const res = await fetch(apiUrl('/api/admin/login'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return setLoginError(data.error || 'Giriş başarısız');
+
+        setAdminToken(data.token);
+        document.getElementById('login-area').style.display = 'none';
+        document.getElementById('upload-area').style.display = 'block';
+      } catch (e) {
+        setLoginError('Sunucuya bağlanılamadı.');
+      }
+    }
+
+    async function adminLogout() {
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
+      await fetch(apiUrl('/api/auth/logout'), { method: 'POST' }).catch(() => {});
+      location.reload();
+    }
+
+    async function uploadReel() {
+      try {
+        setUploadError('');
+        setUploadOk('');
+
+        const title = document.getElementById('title').value.trim();
+        const description = document.getElementById('description').value;
+        const file = document.getElementById('pdf').files[0];
+
+        if (!title) return setUploadError('Başlık zorunlu.');
+        if (!file) return setUploadError('PDF seçmelisin.');
+
+        const form = new FormData();
+        form.append('title', title);
+        form.append('description', description || '');
+        form.append('pdf', file);
+
+        const token = getAdminToken();
+        if (!token) return setUploadError('Önce admin giriş yapmalısın.');
+
+        const res = await fetch(apiUrl('/api/admin/reels'), {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return setUploadError(data.error || 'Yükleme başarısız');
+
+        setUploadOk('Yüklendi! Ana sayfadan görebilirsin.');
+        document.getElementById('title').value = '';
+        document.getElementById('description').value = '';
+        document.getElementById('pdf').value = '';
+      } catch (e) {
+        setUploadError('Sunucuya bağlanılamadı.');
+      }
+    }
+
+    (function boot() {
+      const token = getAdminToken();
+      if (token) {
+        document.getElementById('login-area').style.display = 'none';
+        document.getElementById('upload-area').style.display = 'block';
+      }
+    })();
+  </script>
+</body>
+</html>
