@@ -112,6 +112,11 @@ app.get('/api/reels/public', async (req, res) => {
   res.json({ reels: rows.map(r => ({ ...r, pdf_url: r.pdf_url })) });
 });
 
+app.get('/api/admin/reels', requireAdmin, async (req, res) => {
+  const rows = await all('SELECT id, title, description, pdf_path, pdf_url, created_at FROM reels ORDER BY id DESC');
+  res.json({ reels: rows });
+});
+
 app.post('/api/admin/reels', requireAdmin, upload.single('pdf'), async (req, res) => {
   const schema = z.object({ title: z.string().min(1).max(80), description: z.string().min(0).max(500) });
   const parsed = schema.safeParse({ title: req.body.title, description: req.body.description ?? '' });
@@ -144,6 +149,29 @@ app.post('/api/admin/reels', requireAdmin, upload.single('pdf'), async (req, res
   );
 
   res.json({ ok: true, id: result.lastID });
+});
+
+app.delete('/api/admin/reels/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid_id' });
+
+  const reel = await get('SELECT id, pdf_path FROM reels WHERE id = ?', [id]);
+  if (!reel) return res.status(404).json({ error: 'not_found' });
+
+  const supabase = getSupabase();
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET;
+  if (!bucket) return res.status(500).json({ error: 'missing_storage_bucket' });
+
+  const paths = [];
+  if (reel.pdf_path) paths.push(reel.pdf_path);
+
+  if (paths.length) {
+    const { error: delErr } = await supabase.storage.from(bucket).remove(paths);
+    if (delErr) return res.status(500).json({ error: 'storage_delete_failed' });
+  }
+
+  await run('DELETE FROM reels WHERE id = ?', [id]);
+  res.json({ ok: true });
 });
 
 app.use((err, req, res, next) => {
