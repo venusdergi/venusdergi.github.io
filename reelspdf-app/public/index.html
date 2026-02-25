@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ReelsPDF</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <style>
+    :root {
+      --accent: #ff2d55;
+      --glass: rgba(0,0,0,0.55);
+      --muted: rgba(255,255,255,0.65);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    ::-webkit-scrollbar { display: none; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #000;
+      color: white;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+    }
+    #bg-container { position: fixed; inset: 0; z-index: -1; filter: brightness(0.4) blur(10px); }
+    #bg-container video, #bg-container img { width: 100%; height: 100%; object-fit: cover; }
+
+    #auth-screen {
+      position: fixed; inset: 0; z-index: 10000; background: #000;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .auth-card {
+      width: 100%; max-width: 420px;
+      border: 1px solid #333; border-radius: 28px;
+      background: rgba(20,20,20,0.86);
+      backdrop-filter: blur(20px);
+      padding: 28px;
+    }
+    .auth-title { font-size: 22px; font-weight: 800; letter-spacing: 0.2px; }
+    .auth-sub { margin-top: 6px; color: var(--muted); font-size: 13px; }
+    .field { margin-top: 16px; }
+    .field label { display:block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .field input {
+      width: 100%;
+      background: #0e0e0e;
+      border: 1px solid #2a2a2a;
+      color: #fff;
+      padding: 12px 14px;
+      border-radius: 14px;
+      outline: none;
+      font-size: 14px;
+    }
+    .row { display: flex; gap: 10px; margin-top: 16px; }
+    .btn {
+      flex: 1;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 14px;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn.primary { background: #fff; color: #000; }
+    .btn.ghost { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.14); }
+    .link { margin-top: 14px; font-size: 13px; color: var(--muted); text-align:center; }
+    .link button { background:none; border:none; color:#0095f6; font-weight:800; cursor:pointer; }
+    .error { margin-top: 12px; color: #ff6b6b; font-size: 13px; min-height: 18px; text-align:center; }
+
+    #viewer-container { flex: 1; height: 100vh; overflow-y: scroll; scroll-snap-type: y mandatory; padding-right: 5px; }
+    .page-wrapper { height: 100vh; display: flex; align-items: center; justify-content: center; scroll-snap-align: start; overflow: hidden; position: relative; }
+    canvas {
+      max-width: 95%; max-height: 90vh; object-fit: contain;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+      border-radius: 10px;
+      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      cursor: zoom-in;
+    }
+
+    #reel-meta {
+      position: fixed;
+      left: 16px;
+      bottom: 18px;
+      max-width: min(520px, calc(100vw - 120px));
+      z-index: 1200;
+      background: linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.55));
+      padding: 14px 14px;
+      border-radius: 18px;
+      backdrop-filter: blur(10px);
+    }
+    #reel-meta .title { font-weight: 900; font-size: 16px; }
+    #reel-meta .desc { margin-top: 6px; font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.35; white-space: pre-wrap; }
+
+    #topbar {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      right: 88px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      z-index: 1400;
+      pointer-events: none;
+    }
+    .pill {
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(10px);
+      color: rgba(255,255,255,0.9);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .pill button { border:0; background:none; color:#fff; cursor:pointer; font-weight:900; }
+
+    #sidebar {
+      width: 7vh; min-width: 60px;
+      height: 100vh;
+      background: rgba(0,0,0,0.4);
+      backdrop-filter: blur(15px);
+      border-left: 1px solid rgba(255,255,255,0.1);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 3vh;
+      z-index: 1500;
+    }
+    .action-btn { display: flex; flex-direction: column; align-items: center; cursor: pointer; transition: 0.2s; }
+    .icon-circle {
+      width: 5vh; height: 5vh; min-width: 45px; min-height: 45px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2vh;
+      margin-bottom: 5px;
+      transition: all 0.3s;
+    }
+    .action-btn:active .icon-circle { transform: scale(0.85); }
+    .is-liked .icon-circle { background: var(--accent); color: white; box-shadow: 0 0 20px rgba(255, 45, 85, 0.5); }
+    .btn-label { font-size: 10px; font-weight: 600; color: #aaa; text-transform: uppercase; }
+
+    .share-dropdown {
+      position: absolute;
+      right: 80px;
+      bottom: 20px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      z-index: 1600;
+      min-width: 150px;
+      display: none;
+    }
+    .share-dropdown.active { display: block; animation: slideUp 0.3s ease; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .share-option { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #222; transition: background 0.2s; font-size: 13px; }
+    .share-option:last-child { border-bottom: none; }
+    .share-option:hover { background: rgba(255,255,255,0.1); }
+
+    #comment-drawer {
+      position: fixed;
+      right: -450px;
+      top: 0;
+      width: 400px;
+      max-width: 80vw;
+      height: 100vh;
+      background: #121212;
+      z-index: 2000;
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid #333;
+    }
+    #comment-drawer.active { transform: translateX(-450px); }
+    .drawer-header { padding: 20px; border-bottom: 1px solid #222; text-align: center; font-weight: 800; }
+    .comment-list { flex: 1; overflow-y: auto; padding: 20px; }
+    .insta-comment { display: flex; gap: 12px; margin-bottom: 20px; }
+    .avatar { width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
+    .comment-content b { font-size: 13px; margin-right: 5px; }
+    .comment-content p { font-size: 13px; color: #efefef; line-height: 1.4; }
+    .comment-time { font-size: 11px; color: #666; margin-top: 4px; }
+
+    .insta-input { padding: 20px; border-top: 1px solid #222; display: flex; gap: 10px; background: #121212; }
+    .insta-input input {
+      flex: 1;
+      background: #262626;
+      border: 1px solid #363636;
+      padding: 12px 16px;
+      border-radius: 25px;
+      color: white;
+      outline: none;
+      font-size: 14px;
+    }
+
+    .heart-pop {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--accent);
+      font-size: 120px;
+      pointer-events: none;
+      z-index: 5000;
+      animation: heartAnim 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    @keyframes heartAnim {
+      0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+      40% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+    }
+
+    #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; z-index: 1500; }
+
+    body.light-mode { background: #f5f5f5; color: #000; }
+    body.light-mode #sidebar { background: rgba(255,255,255,0.4); }
+    body.light-mode .icon-circle { background: rgba(0,0,0,0.1); }
+    body.light-mode #comment-drawer { background: #fff; }
+    body.light-mode .drawer-header { border-bottom-color: #eee; }
+    body.light-mode .insta-input { background: #fff; border-top-color: #eee; }
+    body.light-mode .insta-input input { background: #f5f5f5; border-color: #ddd; color: #000; }
+    body.light-mode .comment-content p { color: #000; }
+    body.light-mode .share-dropdown { background: #fff; border-color: #ddd; }
+    body.light-mode .share-option { border-bottom-color: #eee; }
+    body.light-mode canvas { box-shadow: 0 20px 50px rgba(0,0,0,0.2); }
+
+    @media (max-width: 560px) {
+      #reel-meta { max-width: calc(100vw - 96px); }
+      #topbar { right: 70px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="bg-container">
+    <video autoplay muted loop playsinline>
+      <source src="https://assets.mixkit.co/videos/preview/mixkit-abstract-motion-of-colors-32665-large.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <div id="auth-screen">
+    <div class="auth-card">
+      <div class="auth-title" id="auth-title">Giriş Yap</div>
+      <div class="auth-sub" id="auth-sub">ReelsPDF’leri görmek için hesabına giriş yap.</div>
+
+      <div class="field">
+        <label for="email">E-posta</label>
+        <input id="email" type="email" autocomplete="email" placeholder="ornek@mail.com" />
+      </div>
+      <div class="field">
+        <label for="password">Şifre</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="En az 6 karakter" />
+      </div>
+
+      <div class="row">
+        <button class="btn primary" id="submit-btn" onclick="submitAuth()">Giriş</button>
+        <button class="btn ghost" onclick="continueAsGuest()">Misafir</button>
+      </div>
+
+      <div class="row">
+        <button class="btn ghost" onclick="goAdmin()">Admin Panel</button>
+      </div>
+
+      <div class="link">
+        <span id="switch-text">Hesabın yok mu?</span>
+        <button id="switch-btn" onclick="toggleMode()">Kayıt Ol</button>
+      </div>
+
+      <div class="error" id="auth-error"></div>
+    </div>
+  </div>
+
+  <div id="overlay" onclick="closeComments()"></div>
+
+  <div id="topbar">
+    <div class="pill" id="user-pill" style="display:none;">
+      <span id="user-email"></span>
+      <button onclick="logout()">Çıkış</button>
+    </div>
+    <div class="pill" id="reel-pill" style="display:none;">
+      <span id="reel-count"></span>
+    </div>
+  </div>
+
+  <div id="viewer-container"></div>
+
+  <div id="reel-meta" style="display:none;">
+    <div class="title" id="reel-title"></div>
+    <div class="desc" id="reel-desc"></div>
+  </div>
+
+  <aside id="sidebar" style="display:none;">
+    <div class="action-btn" id="like-btn" onclick="toggleLike()">
+      <div class="icon-circle">❤️</div>
+      <span class="btn-label" id="like-count">0</span>
+    </div>
+    <div class="action-btn" onclick="openComments()">
+      <div class="icon-circle">💬</div>
+      <span class="btn-label" id="c-count">0</span>
+    </div>
+    <div class="action-btn" onclick="toggleShare(event)">
+      <div class="icon-circle">📤</div>
+      <span class="btn-label">Paylaş</span>
+    </div>
+    <div class="action-btn" onclick="downloadPage()">
+      <div class="icon-circle">⬇️</div>
+      <span class="btn-label">İndir</span>
+    </div>
+    <div class="action-btn" onclick="toggleTheme()">
+      <div class="icon-circle" id="theme-icon">🌙</div>
+      <span class="btn-label">Tema</span>
+    </div>
+  </aside>
+
+  <div class="share-dropdown" id="share-dropdown">
+    <div class="share-option" onclick="shareToWhatsApp()">WhatsApp</div>
+    <div class="share-option" onclick="shareToTwitter()">Twitter/X</div>
+    <div class="share-option" onclick="shareToFacebook()">Facebook</div>
+    <div class="share-option" onclick="copyLink()">Linki Kopyala</div>
+  </div>
+
+  <div id="comment-drawer">
+    <div class="drawer-header">Yorumlar</div>
+    <div class="comment-list" id="comment-list"></div>
+    <div class="insta-input">
+      <input type="text" id="c-input" placeholder="Yorum ekle..." />
+      <button onclick="addComment()" style="background:none; border:none; color:#0095f6; font-weight:800; cursor:pointer;">Paylaş</button>
+    </div>
+  </div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    const viewer = document.getElementById('viewer-container');
+    const db = {}; // likes/comments (şimdilik local)
+    let activePage = 1;
+    let lastTap = 0;
+    let currentPdf = null;
+    let isDarkMode = true;
+
+    let authMode = 'login'; // login | register
+    let reels = [];
+    let activeReel = null;
+    let isGuest = false;
+
+    const API_BASE_URL = (window.API_BASE_URL || '').replace(/\/$/, '');
+    const STORAGE_TOKEN_KEY = 'reelspdf_token';
+
+    function apiUrl(path) {
+      if (!API_BASE_URL) return path;
+      return `${API_BASE_URL}${path}`;
+    }
+
+    function getToken() {
+      return localStorage.getItem(STORAGE_TOKEN_KEY);
+    }
+
+    function setToken(token) {
+      if (!token) return;
+      localStorage.setItem(STORAGE_TOKEN_KEY, token);
+    }
+
+    function setAuthError(msg) {
+      document.getElementById('auth-error').innerText = msg || '';
+    }
+
+    function toggleMode() {
+      authMode = (authMode === 'login') ? 'register' : 'login';
+      document.getElementById('auth-title').innerText = authMode === 'login' ? 'Giriş Yap' : 'Kayıt Ol';
+      document.getElementById('auth-sub').innerText = authMode === 'login'
+        ? 'ReelsPDF’leri görmek için hesabına giriş yap.'
+        : 'ReelsPDF için hesap oluştur.';
+      document.getElementById('submit-btn').innerText = authMode === 'login' ? 'Giriş' : 'Kayıt';
+      document.getElementById('switch-text').innerText = authMode === 'login' ? 'Hesabın yok mu?' : 'Zaten hesabın var mı?';
+      document.getElementById('switch-btn').innerText = authMode === 'login' ? 'Kayıt Ol' : 'Giriş Yap';
+      setAuthError('');
+    }
+
+    function goAdmin() {
+      window.location.href = '/admin.html';
+    }
+
+    async function continueAsGuest() {
+      isGuest = true;
+      document.getElementById('user-email').innerText = 'Misafir';
+      document.getElementById('user-pill').style.display = 'inline-flex';
+      await loadReelsAndShow();
+    }
+
+    async function submitAuth() {
+      try {
+        setAuthError('');
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        if (!email || !password) return setAuthError('E-posta ve şifre gerekli.');
+
+        const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        const res = await fetch(apiUrl(endpoint), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return setAuthError(data.error || 'Hata oluştu.');
+        }
+
+        setToken(data.token);
+
+        await boot();
+      } catch (e) {
+        setAuthError('Sunucuya bağlanılamadı.');
+      }
+    }
+
+    async function logout() {
+      localStorage.removeItem(STORAGE_TOKEN_KEY);
+      await fetch(apiUrl('/api/auth/logout'), { method: 'POST' }).catch(() => {});
+      location.reload();
+    }
+
+    function showAppUI() {
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('sidebar').style.display = 'flex';
+      document.getElementById('reel-meta').style.display = 'block';
+      document.getElementById('user-pill').style.display = 'inline-flex';
+      document.getElementById('reel-pill').style.display = 'inline-flex';
+    }
+
+    async function loadReelsAndShow() {
+      const reelsRes = await fetch(apiUrl('/api/reels'));
+      if (!reelsRes.ok) return;
+      const payload = await reelsRes.json();
+      reels = payload.reels || [];
+
+      showAppUI();
+      document.getElementById('reel-count').innerText = `${reels.length} reels`;
+
+      if (!reels.length) {
+        document.getElementById('reel-title').innerText = 'Henüz reels yok';
+        document.getElementById('reel-desc').innerText = 'Admin panelinden PDF yükleyince burada görünecek.';
+        return;
+      }
+
+      await loadReel(reels[0]);
+    }
+
+    async function boot() {
+      const token = getToken();
+      if (!token) return;
+
+      const meRes = await fetch(apiUrl('/api/me'), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!meRes.ok) return;
+      const me = await meRes.json();
+      document.getElementById('user-email').innerText = me.email;
+      await loadReelsAndShow();
+    }
+
+    async function loadReel(reel) {
+      activeReel = reel;
+      document.getElementById('reel-title').innerText = reel.title || '';
+      document.getElementById('reel-desc').innerText = reel.description || '';
+
+      viewer.innerHTML = '';
+      activePage = 1;
+      updateUIState();
+
+      const pdf = await pdfjsLib.getDocument(reel.pdf_url).promise;
+      currentPdf = pdf;
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-wrapper';
+        wrapper.dataset.id = i;
+        viewer.appendChild(wrapper);
+        observer.observe(wrapper);
+        renderPage(pdf, i, wrapper);
+      }
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          activePage = parseInt(e.target.dataset.id);
+          updateUIState();
+        }
+      });
+    }, { threshold: 0.6 });
+
+    async function renderPage(pdf, num, container) {
+      const page = await pdf.getPage(num);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement('canvas');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      canvas.addEventListener('click', (e) => handleSmartZoom(e, canvas));
+      container.appendChild(canvas);
+    }
+
+    function handleSmartZoom(e, canvas) {
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        const rect = canvas.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+        if (canvas.style.transform === 'scale(2.5)') {
+          canvas.style.transform = 'scale(1)';
+        } else {
+          canvas.style.transformOrigin = `${x}% ${y}%`;
+          canvas.style.transform = 'scale(2.5)';
+        }
+      }
+      lastTap = now;
+    }
+
+    function toggleTheme() {
+      isDarkMode = !isDarkMode;
+      document.body.classList.toggle('light-mode');
+      document.getElementById('theme-icon').innerText = isDarkMode ? '🌙' : '☀️';
+    }
+
+    function toggleShare(e) {
+      e.stopPropagation();
+      document.getElementById('share-dropdown').classList.toggle('active');
+    }
+
+    function shareToWhatsApp() {
+      const msg = `ReelsPDF - Sayfa ${activePage} - Birlikte göz at!`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`);
+    }
+
+    function shareToTwitter() {
+      const msg = `ReelsPDF'de sayfa ${activePage} çok güzel! 📄 #ReelsPDF`;
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(msg)}`);
+    }
+
+    function shareToFacebook() {
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`);
+    }
+
+    function copyLink() {
+      navigator.clipboard.writeText(window.location.href);
+      alert('Link kopyalandı! ✓');
+      document.getElementById('share-dropdown').classList.remove('active');
+    }
+
+    function downloadPage() {
+      const canvases = document.querySelectorAll('canvas');
+      canvases.forEach((canvas) => {
+        const wrapper = canvas.closest('.page-wrapper');
+        if (wrapper.dataset.id == activePage) {
+          const link = document.createElement('a');
+          link.href = canvas.toDataURL('image/png');
+          link.download = `ReelsPDF-Sayfa-${activePage}.png`;
+          link.click();
+        }
+      });
+    }
+
+    function toggleLike() {
+      if (isGuest) return;
+      if (!db[activePage]) db[activePage] = { likes: 0, liked: false, comments: [] };
+      const pageData = db[activePage];
+      pageData.liked = !pageData.liked;
+      pageData.likes += pageData.liked ? 1 : -1;
+
+      if (pageData.liked) {
+        const heart = document.createElement('div');
+        heart.className = 'heart-pop';
+        heart.innerHTML = '❤️';
+        document.body.appendChild(heart);
+        setTimeout(() => heart.remove(), 800);
+      }
+      updateUIState();
+    }
+
+    function updateUIState() {
+      const pageData = db[activePage] || { likes: 0, liked: false, comments: [] };
+      const likeBtn = document.getElementById('like-btn');
+      likeBtn.classList.toggle('is-liked', pageData.liked);
+      document.getElementById('like-count').innerText = pageData.likes;
+      document.getElementById('c-count').innerText = (pageData.comments || []).length;
+    }
+
+    function openComments() {
+      if (isGuest) return;
+      document.getElementById('comment-drawer').classList.add('active');
+      document.getElementById('overlay').style.display = 'block';
+      renderComments();
+    }
+
+    function closeComments() {
+      document.getElementById('comment-drawer').classList.remove('active');
+      document.getElementById('overlay').style.display = 'none';
+    }
+
+    function addComment() {
+      if (isGuest) return;
+      const input = document.getElementById('c-input');
+      if (!input.value.trim()) return;
+
+      if (!db[activePage]) db[activePage] = { likes: 0, liked: false, comments: [] };
+      db[activePage].comments.push({
+        user: 'kullanici',
+        text: input.value,
+        time: 'Şimdi'
+      });
+      input.value = '';
+      updateUIState();
+      renderComments();
+    }
+
+    function renderComments() {
+      const list = document.getElementById('comment-list');
+      list.innerHTML = '';
+      const comments = (db[activePage] && db[activePage].comments) ? db[activePage].comments : [];
+
+      comments.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'insta-comment';
+        div.innerHTML = `
+          <div class="avatar"></div>
+          <div class="comment-content">
+            <p><b>${c.user}</b>${c.text}</p>
+            <div class="comment-time">${c.time}</div>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+      list.scrollTop = list.scrollHeight;
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.action-btn')) {
+        document.getElementById('share-dropdown').classList.remove('active');
+      }
+    });
+
+    (async () => {
+      await boot();
+      if (!getToken()) {
+        // Token yoksa auth ekranında kal; kullanıcı isterse misafir devam edebilir.
+      }
+    })();
+  </script>
+</body>
+</html>
