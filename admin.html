@@ -73,6 +73,19 @@
     .actions { display:flex; gap: 10px; align-items:center; justify-content: flex-end; }
     .tiny { font-size: 12px; padding: 10px 12px; }
     .right { text-align:right; }
+
+    .progress {
+      margin-top: 12px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 999px;
+      overflow: hidden;
+      height: 10px;
+    }
+    .progress > div { height: 100%; width: 0%; background: linear-gradient(90deg, rgba(0,149,246,1), rgba(255,45,85,1)); transition: width 120ms linear; }
+    .progress-row { display:flex; justify-content: space-between; gap: 10px; align-items:center; margin-top: 10px; }
+    .progress-text { font-size: 12px; color: rgba(255,255,255,0.75); font-weight: 800; }
+    .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -142,11 +155,11 @@
 
           <div class="field">
             <label for="title">Başlık</label>
-            <input id="title" type="text" maxlength="80" placeholder="Örn:Neden Paris Modanın Merkezidir?" />
+            <input id="title" type="text" maxlength="80" placeholder="Örn: Ders Notları - 1" />
           </div>
           <div class="field">
             <label for="description">Açıklama</label>
-            <textarea id="description" maxlength="500" placeholder="Instagram tarzı açıklama..."></textarea>
+            <textarea id="description" maxlength="500" placeholder="Instagram tarzı açıklama...\n#etiket"></textarea>
           </div>
           <div class="field">
             <label for="pdf">PDF</label>
@@ -154,9 +167,15 @@
           </div>
 
           <div class="row">
-            <button class="btn primary" onclick="uploadReel()">Yükle</button>
-            <button class="btn ghost" onclick="refreshReels()">Listeyi Güncelle</button>
+            <button class="btn primary" id="upload-btn" onclick="uploadReel()">Yükle</button>
+            <button class="btn ghost" id="refresh-btn" onclick="refreshReels()">Listeyi Güncelle</button>
           </div>
+
+          <div class="progress-row" id="upload-progress-row" style="display:none;">
+            <div class="progress-text" id="upload-progress-text">0%</div>
+            <div class="progress-text" id="upload-progress-bytes"></div>
+          </div>
+          <div class="progress" id="upload-progress" style="display:none;"><div id="upload-progress-bar"></div></div>
 
           <div class="error" id="upload-error"></div>
           <div class="ok" id="upload-ok"></div>
@@ -234,6 +253,44 @@
       return String(s || '').replace(/[&<>"]+/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] || c));
     }
 
+    function fmtBytes(n) {
+      const num = Number(n);
+      if (!Number.isFinite(num) || num < 0) return '';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let i = 0;
+      let v = num;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+
+    function setUploadProgress(pct, loaded, total) {
+      const row = document.getElementById('upload-progress-row');
+      const bar = document.getElementById('upload-progress-bar');
+      const track = document.getElementById('upload-progress');
+      const text = document.getElementById('upload-progress-text');
+      const bytes = document.getElementById('upload-progress-bytes');
+
+      row.style.display = 'flex';
+      track.style.display = 'block';
+      const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+      text.innerText = `${clamped}%`;
+      bar.style.width = `${clamped}%`;
+
+      if (Number.isFinite(loaded) && Number.isFinite(total) && total > 0) {
+        bytes.innerText = `${fmtBytes(loaded)} / ${fmtBytes(total)}`;
+      } else {
+        bytes.innerText = '';
+      }
+    }
+
+    function resetUploadProgress() {
+      document.getElementById('upload-progress-row').style.display = 'none';
+      document.getElementById('upload-progress').style.display = 'none';
+      document.getElementById('upload-progress-text').innerText = '0%';
+      document.getElementById('upload-progress-bytes').innerText = '';
+      document.getElementById('upload-progress-bar').style.width = '0%';
+    }
+
     async function refreshReels() {
       try {
         setListError('');
@@ -269,7 +326,7 @@
               <td class="right"><span class="muted">${date}</span></td>
               <td class="right">
                 <div class="actions">
-                  <button class="btn danger tiny" onclick="deleteReel(${r.id})">Sil</button>
+                  <button class="btn danger tiny" id="del-${r.id}" onclick="deleteReel(${r.id})">Sil</button>
                 </div>
               </td>
             </tr>
@@ -290,12 +347,18 @@
         const ok = confirm('Bu reels silinsin mi? PDF de Supabase’den silinir.');
         if (!ok) return;
 
+        const btn = document.getElementById(`del-${id}`);
+        if (btn) { btn.disabled = true; btn.innerText = 'Siliniyor...'; }
+
         const res = await fetch(apiUrl(`/api/admin/reels/${id}`), {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) return setListError(data.error || 'Silme başarısız');
+        if (!res.ok) {
+          if (btn) { btn.disabled = false; btn.innerText = 'Sil'; }
+          return setListError(data.error || 'Silme başarısız');
+        }
 
         setListOk('Silindi.');
         await refreshReels();
@@ -308,6 +371,7 @@
       try {
         setUploadError('');
         setUploadOk('');
+        resetUploadProgress();
 
         const title = document.getElementById('title').value.trim();
         const description = document.getElementById('description').value;
@@ -324,18 +388,43 @@
         const token = getAdminToken();
         if (!token) return setUploadError('Önce admin giriş yapmalısın.');
 
-        const res = await fetch(apiUrl('/api/admin/reels'), {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: form
+        const uploadBtn = document.getElementById('upload-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
+        uploadBtn.disabled = true;
+        refreshBtn.disabled = true;
+
+        const xhr = new XMLHttpRequest();
+        const url = apiUrl('/api/admin/reels');
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+        xhr.upload.onprogress = (evt) => {
+          if (!evt.lengthComputable) return;
+          const pct = (evt.loaded / evt.total) * 100;
+          setUploadProgress(pct, evt.loaded, evt.total);
+        };
+
+        const done = await new Promise((resolve) => {
+          xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: xhr.responseText });
+          xhr.onerror = () => resolve({ ok: false, status: 0, text: '' });
+          xhr.onabort = () => resolve({ ok: false, status: 0, text: '' });
+          xhr.send(form);
         });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) return setUploadError(data.error || 'Yükleme başarısız');
+
+        uploadBtn.disabled = false;
+        refreshBtn.disabled = false;
+
+        let data = {};
+        try { data = JSON.parse(done.text || '{}'); } catch { data = {}; }
+        if (!done.ok) return setUploadError(data.error || 'Yükleme başarısız');
+
+        setUploadProgress(100, 1, 1);
 
         setUploadOk('Yüklendi! Ana sayfadan görebilirsin.');
         document.getElementById('title').value = '';
         document.getElementById('description').value = '';
         document.getElementById('pdf').value = '';
+        await refreshReels();
       } catch (e) {
         setUploadError('Sunucuya bağlanılamadı.');
       }
@@ -353,4 +442,3 @@
   </script>
 </body>
 </html>
-
