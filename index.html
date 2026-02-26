@@ -121,6 +121,23 @@
     }
     .pill button { border:0; background:none; color:#fff; cursor:pointer; font-weight:900; }
 
+    #loadbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      z-index: 5000;
+      background: rgba(255,255,255,0.06);
+      display: none;
+    }
+    #loadbar > div {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(0,149,246,1), rgba(255,45,85,1));
+      transition: width 120ms linear;
+    }
+
     #sidebar {
       width: 7vh; min-width: 60px;
       height: 100vh;
@@ -282,6 +299,8 @@
 
   <div id="overlay" onclick="closeComments()"></div>
 
+  <div id="loadbar"><div id="loadbar-fill"></div></div>
+
   <div id="topbar">
     <div class="pill" id="user-pill" style="display:none;">
       <span id="user-email"></span>
@@ -353,6 +372,10 @@
     let activeReel = null;
     let isGuest = false;
 
+    const loadbar = document.getElementById('loadbar');
+    const loadbarFill = document.getElementById('loadbar-fill');
+    let loadbarTimer = null;
+
     const API_BASE_URL = (window.API_BASE_URL || '').replace(/\/$/, '');
     const STORAGE_TOKEN_KEY = 'reelspdf_token';
 
@@ -368,6 +391,33 @@
     function setToken(token) {
       if (!token) return;
       localStorage.setItem(STORAGE_TOKEN_KEY, token);
+    }
+
+    function startLoadbar() {
+      if (loadbarTimer) clearInterval(loadbarTimer);
+      loadbar.style.display = 'block';
+      loadbarFill.style.width = '8%';
+      let p = 8;
+      loadbarTimer = setInterval(() => {
+        p = Math.min(92, p + Math.max(0.4, (92 - p) * 0.06));
+        loadbarFill.style.width = `${p}%`;
+      }, 140);
+    }
+
+    function setLoadbarProgress(pct) {
+      const p = Math.max(0, Math.min(100, pct));
+      loadbar.style.display = 'block';
+      loadbarFill.style.width = `${p}%`;
+    }
+
+    function stopLoadbar() {
+      if (loadbarTimer) clearInterval(loadbarTimer);
+      loadbarTimer = null;
+      loadbarFill.style.width = '100%';
+      setTimeout(() => {
+        loadbar.style.display = 'none';
+        loadbarFill.style.width = '0%';
+      }, 220);
     }
 
     function setAuthError(msg) {
@@ -438,8 +488,9 @@
     }
 
     async function loadReelsAndShow() {
+      startLoadbar();
       const reelsRes = await fetch(apiUrl('/api/reels'));
-      if (!reelsRes.ok) return;
+      if (!reelsRes.ok) { stopLoadbar(); return; }
       const payload = await reelsRes.json();
       reels = payload.reels || [];
 
@@ -447,12 +498,14 @@
       document.getElementById('reel-count').innerText = `${reels.length} reels`;
 
       if (!reels.length) {
+        stopLoadbar();
         document.getElementById('reel-title').innerText = 'Henüz reels yok';
         document.getElementById('reel-desc').innerText = 'Admin panelinden PDF yükleyince burada görünecek.';
         return;
       }
 
       await loadReel(reels[0]);
+      stopLoadbar();
     }
 
     async function boot() {
@@ -477,17 +530,28 @@
       activePage = 1;
       updateUIState();
 
-      const pdf = await pdfjsLib.getDocument(reel.pdf_url).promise;
+      startLoadbar();
+      const pdfTask = pdfjsLib.getDocument({ url: reel.pdf_url, disableAutoFetch: false, disableStream: false });
+      pdfTask.onProgress = (p) => {
+        if (!p || !p.total) return;
+        const pct = (p.loaded / p.total) * 75;
+        setLoadbarProgress(Math.max(8, Math.min(75, pct)));
+      };
+      const pdf = await pdfTask.promise;
       currentPdf = pdf;
 
       for (let i = 1; i <= pdf.numPages; i++) {
         const wrapper = document.createElement('div');
         wrapper.className = 'page-wrapper';
         wrapper.dataset.id = i;
+        wrapper.dataset.rendered = '0';
         viewer.appendChild(wrapper);
         observer.observe(wrapper);
-        renderPage(pdf, i, wrapper);
       }
+
+      await renderAround(activePage);
+      setLoadbarProgress(100);
+      stopLoadbar();
     }
 
     const observer = new IntersectionObserver((entries) => {
@@ -495,13 +559,27 @@
         if (e.isIntersecting) {
           activePage = parseInt(e.target.dataset.id);
           updateUIState();
+          renderAround(activePage);
         }
       });
     }, { threshold: 0.6 });
 
+    async function renderAround(center) {
+      if (!currentPdf) return;
+      const start = Math.max(1, center - 1);
+      const end = Math.min(currentPdf.numPages, center + 2);
+      for (let i = start; i <= end; i++) {
+        const wrapper = viewer.querySelector(`.page-wrapper[data-id="${i}"]`);
+        if (!wrapper) continue;
+        if (wrapper.dataset.rendered === '1') continue;
+        wrapper.dataset.rendered = '1';
+        await renderPage(currentPdf, i, wrapper);
+      }
+    }
+
     async function renderPage(pdf, num, container) {
       const page = await pdf.getPage(num);
-      const viewport = page.getViewport({ scale: 2 });
+      const viewport = page.getViewport({ scale: 1.25 });
       const canvas = document.createElement('canvas');
       canvas.height = viewport.height;
       canvas.width = viewport.width;
