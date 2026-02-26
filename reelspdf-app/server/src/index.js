@@ -74,10 +74,10 @@ app.post('/api/auth/login', async (req, res) => {
 
   const { email, password } = parsed.data;
   const user = await get('SELECT id, email, password_hash FROM users WHERE email = ?', [email]);
-  if (!user) return res.status(401).json({ error: 'invalid_credentials' });
+  if (!user) return res.status(401).json({ error: 'user_not_found' });
 
   const ok = await bcrypt.compare(password, user.password_hash);
-  if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
+  if (!ok) return res.status(401).json({ error: 'wrong_password' });
 
   const token = signUserToken({ userId: user.id, email: user.email });
   res.json({ ok: true, token });
@@ -110,6 +110,116 @@ app.get('/api/reels', async (req, res) => {
 app.get('/api/reels/public', async (req, res) => {
   const rows = await all('SELECT id, title, description, pdf_url, created_at FROM reels ORDER BY id DESC');
   res.json({ reels: rows.map(r => ({ ...r, pdf_url: r.pdf_url })) });
+});
+
+app.get('/api/reels/:reelId/pages/:page/reactions', async (req, res) => {
+  const reelId = Number(req.params.reelId);
+  const page = Number(req.params.page);
+  if (!Number.isFinite(reelId) || !Number.isFinite(page)) return res.status(400).json({ error: 'invalid_input' });
+
+  const likesRow = await get(
+    'SELECT COUNT(1) as c FROM reel_likes WHERE reel_id = ? AND page = ?',
+    [reelId, page]
+  );
+  const likes = Number(likesRow && likesRow.c ? likesRow.c : 0);
+
+  let liked = false;
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    try {
+      // reuse existing auth middleware logic by verifying token inline
+      const jwt = require('jsonwebtoken');
+      const secret = process.env.JWT_SECRET;
+      const payload = jwt.verify(auth.slice('Bearer '.length), secret);
+      if (payload && payload.typ === 'user') {
+        const mine = await get(
+          'SELECT 1 as x FROM reel_likes WHERE reel_id = ? AND page = ? AND user_id = ? LIMIT 1',
+          [reelId, page, Number(payload.sub)]
+        );
+        liked = !!mine;
+      }
+    } catch {}
+  }
+
+  res.json({ likes, liked });
+});
+
+app.post('/api/reels/:reelId/pages/:page/like', requireUser, async (req, res) => {
+  const reelId = Number(req.params.reelId);
+  const page = Number(req.params.page);
+  if (!Number.isFinite(reelId) || !Number.isFinite(page)) return res.status(400).json({ error: 'invalid_input' });
+
+  const userId = Number(req.user.id);
+  const existing = await get(
+    'SELECT id FROM reel_likes WHERE reel_id = ? AND page = ? AND user_id = ?',
+    [reelId, page, userId]
+  );
+
+  if (existing) {
+    await run('DELETE FROM reel_likes WHERE id = ?', [existing.id]);
+  } else {
+    const now = new Date().toISOString();
+    await run(
+      'INSERT INTO reel_likes (reel_id, page, user_id, created_at) VALUES (?, ?, ?, ?)',
+      [reelId, page, userId, now]
+    );
+  }
+
+  const likesRow = await get(
+    'SELECT COUNT(1) as c FROM reel_likes WHERE reel_id = ? AND page = ?',
+    [reelId, page]
+  );
+  const likes = Number(likesRow && likesRow.c ? likesRow.c : 0);
+  const liked = !existing;
+  res.json({ ok: true, likes, liked });
+});
+
+app.get('/api/reels/:reelId/pages/:page/comments', async (req, res) => {
+  const reelId = Number(req.params.reelId);
+  const page = Number(req.params.page);
+  if (!Number.isFinite(reelId) || !Number.isFinite(page)) return res.status(400).json({ error: 'invalid_input' });
+
+  const rows = await all(
+    `
+      SELECT c.id, c.text, c.created_at, u.email as user
+      FROM reel_comments c
+      JOIN users u ON u.id = c.user_id
+      WHERE c.reel_id = ? AND c.page = ?
+      ORDER BY c.id ASC
+    `,
+    [reelId, page]
+  );
+
+  res.json({ comments: rows });
+});
+
+app.post('/api/reels/:reelId/pages/:page/comments', requireUser, async (req, res) => {
+  const reelId = Number(req.params.reelId);
+  const page = Number(req.params.page);
+  if (!Number.isFinite(reelId) || !Number.isFinite(page)) return res.status(400).json({ error: 'invalid_input' });
+
+  const schema = z.object({ text: z.string().min(1).max(500) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' });
+
+  const userId = Number(req.user.id);
+  const now = new Date().toISOString();
+  const result = await run(
+    'INSERT INTO reel_comments (reel_id, page, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)',
+    [reelId, page, userId, parsed.data.text, now]
+  );
+
+  const row = await get(
+    `
+      SELECT c.id, c.text, c.created_at, u.email as user
+      FROM reel_comments c
+      JOIN users u ON u.id = c.user_id
+      WHERE c.id = ?
+    `,
+    [result.lastID]
+  );
+
+  res.json({ ok: true, comment: row });
 });
 
 app.get('/api/admin/reels', requireAdmin, async (req, res) => {
