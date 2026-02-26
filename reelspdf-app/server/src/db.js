@@ -53,6 +53,28 @@ async function init() {
 
   await run(`ALTER TABLE reels ADD COLUMN pdf_url TEXT;`).catch(() => {});
   await run(`UPDATE reels SET pdf_url = '/uploads/' || pdf_path WHERE pdf_url IS NULL OR pdf_url = '';`).catch(() => {});
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS reel_likes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reel_id INTEGER NOT NULL,
+      page INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(reel_id, page, user_id)
+    );
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS reel_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reel_id INTEGER NOT NULL,
+      page INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
 }
 
 module.exports = { db, run, get, all, init };
