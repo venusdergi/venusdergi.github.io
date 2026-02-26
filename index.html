@@ -69,7 +69,7 @@
     .link button { background:none; border:none; color:#0095f6; font-weight:800; cursor:pointer; }
     .error { margin-top: 12px; color: #ff6b6b; font-size: 13px; min-height: 18px; text-align:center; }
 
-    #viewer-container { flex: 1; height: 100vh; overflow-y: scroll; scroll-snap-type: y mandatory; padding-right: 5px; }
+    #viewer-container { flex: 1; height: 100vh; width: 100vw; overflow-y: scroll; scroll-snap-type: y mandatory; padding-right: 0; }
     .page-wrapper { height: 100vh; display: flex; align-items: center; justify-content: center; scroll-snap-align: start; overflow: hidden; position: relative; }
     canvas {
       max-width: 95%; max-height: 90vh; object-fit: contain;
@@ -78,6 +78,42 @@
       transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       cursor: zoom-in;
     }
+
+    #actions-overlay {
+      position: fixed;
+      right: 14px;
+      bottom: 22px;
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+      z-index: 1700;
+      pointer-events: none;
+    }
+    .action-chip {
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .chip-icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.14);
+      backdrop-filter: blur(10px);
+      font-size: 22px;
+      transition: transform 180ms ease;
+    }
+    .action-chip:active .chip-icon { transform: scale(0.92); }
+    .chip-count { font-size: 12px; font-weight: 900; color: rgba(255,255,255,0.92); text-shadow: 0 10px 20px rgba(0,0,0,0.8); }
+    .chip-label { font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.65); text-transform: uppercase; letter-spacing: 0.06em; }
+    .chip-liked .chip-icon { background: rgba(255,45,85,0.22); border-color: rgba(255,45,85,0.5); box-shadow: 0 0 24px rgba(255, 45, 85, 0.35); }
 
     #reel-meta {
       position: fixed;
@@ -138,34 +174,7 @@
       transition: width 120ms linear;
     }
 
-    #sidebar {
-      width: 7vh; min-width: 60px;
-      height: 100vh;
-      background: rgba(0,0,0,0.4);
-      backdrop-filter: blur(15px);
-      border-left: 1px solid rgba(255,255,255,0.1);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      gap: 3vh;
-      z-index: 1500;
-    }
-    .action-btn { display: flex; flex-direction: column; align-items: center; cursor: pointer; transition: 0.2s; }
-    .icon-circle {
-      width: 5vh; height: 5vh; min-width: 45px; min-height: 45px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2.2vh;
-      margin-bottom: 5px;
-      transition: all 0.3s;
-    }
-    .action-btn:active .icon-circle { transform: scale(0.85); }
-    .is-liked .icon-circle { background: var(--accent); color: white; box-shadow: 0 0 20px rgba(255, 45, 85, 0.5); }
-    .btn-label { font-size: 10px; font-weight: 600; color: #aaa; text-transform: uppercase; }
+    #sidebar { display: none !important; }
 
     .share-dropdown {
       position: absolute;
@@ -236,6 +245,42 @@
       0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
       40% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
       100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+    }
+
+    .ig-heart {
+      position: fixed;
+      width: 140px;
+      height: 140px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) scale(0.6);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 5500;
+      filter: drop-shadow(0 18px 50px rgba(0,0,0,0.65));
+      animation: igHeart 900ms cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+    }
+    .ig-heart svg { width: 100%; height: 100%; }
+    @keyframes igHeart {
+      0% { transform: translate(-50%, -50%) scale(0.35); opacity: 0; }
+      18% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+      55% { transform: translate(-50%, -50%) scale(0.95); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1.25); opacity: 0; }
+    }
+
+    .burst-dot {
+      position: fixed;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.95);
+      pointer-events: none;
+      z-index: 5600;
+      animation: burst 520ms ease-out forwards;
+    }
+    @keyframes burst {
+      0% { transform: translate(0,0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--dx), var(--dy)) scale(0.1); opacity: 0; }
     }
 
     #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; z-index: 1500; }
@@ -318,28 +363,30 @@
     <div class="desc" id="reel-desc"></div>
   </div>
 
-  <aside id="sidebar" style="display:none;">
-    <div class="action-btn" id="like-btn" onclick="toggleLike()">
-      <div class="icon-circle">❤️</div>
-      <span class="btn-label" id="like-count">0</span>
+  <div id="actions-overlay">
+    <div class="action-chip" id="like-chip" onclick="toggleLike()">
+      <div class="chip-icon">❤️</div>
+      <div class="chip-count" id="like-count">0</div>
+      <div class="chip-label">Beğen</div>
     </div>
-    <div class="action-btn" onclick="openComments()">
-      <div class="icon-circle">💬</div>
-      <span class="btn-label" id="c-count">0</span>
+    <div class="action-chip" onclick="openComments()">
+      <div class="chip-icon">💬</div>
+      <div class="chip-count" id="c-count">0</div>
+      <div class="chip-label">Yorum</div>
     </div>
-    <div class="action-btn" onclick="toggleShare(event)">
-      <div class="icon-circle">📤</div>
-      <span class="btn-label">Paylaş</span>
+    <div class="action-chip" onclick="toggleShare(event)">
+      <div class="chip-icon">📤</div>
+      <div class="chip-label">Paylaş</div>
     </div>
-    <div class="action-btn" onclick="downloadPage()">
-      <div class="icon-circle">⬇️</div>
-      <span class="btn-label">İndir</span>
+    <div class="action-chip" onclick="downloadPage()">
+      <div class="chip-icon">⬇️</div>
+      <div class="chip-label">İndir</div>
     </div>
-    <div class="action-btn" onclick="toggleTheme()">
-      <div class="icon-circle" id="theme-icon">🌙</div>
-      <span class="btn-label">Tema</span>
+    <div class="action-chip" onclick="toggleTheme()">
+      <div class="chip-icon" id="theme-icon">🌙</div>
+      <div class="chip-label">Tema</div>
     </div>
-  </aside>
+  </div>
 
   <div class="share-dropdown" id="share-dropdown">
     <div class="share-option" onclick="shareToWhatsApp()">WhatsApp</div>
@@ -361,7 +408,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
     const viewer = document.getElementById('viewer-container');
-    const db = {}; // likes/comments (şimdilik local)
+    const db = {}; // likes/comments (persisted)
     let activePage = 1;
     let lastTap = 0;
     let currentPdf = null;
@@ -378,6 +425,10 @@
 
     const API_BASE_URL = (window.API_BASE_URL || '').replace(/\/$/, '');
     const STORAGE_TOKEN_KEY = 'reelspdf_token';
+    const STORAGE_REACTIONS_KEY = 'reelspdf_reactions_v1';
+
+    const reactionsCache = {};
+    const commentsCache = {};
 
     function apiUrl(path) {
       if (!API_BASE_URL) return path;
@@ -388,9 +439,88 @@
       return localStorage.getItem(STORAGE_TOKEN_KEY);
     }
 
+    function authHeaders() {
+      const token = getToken();
+      if (!token) return {};
+      return { Authorization: `Bearer ${token}` };
+    }
+
     function setToken(token) {
       if (!token) return;
       localStorage.setItem(STORAGE_TOKEN_KEY, token);
+    }
+
+    function reactionsKey(reelId, page) {
+      return `${reelId || 'x'}:${page || 1}`;
+    }
+
+    function loadReactions() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_REACTIONS_KEY) || '{}') || {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveReactions(allReactions) {
+      try {
+        localStorage.setItem(STORAGE_REACTIONS_KEY, JSON.stringify(allReactions || {}));
+      } catch {}
+    }
+
+    function getPageData() {
+      const reelId = activeReel ? activeReel.id : 'x';
+      const k = reactionsKey(reelId, activePage);
+      if (!db[k]) {
+        const all = loadReactions();
+        db[k] = all[k] || { likes: 0, liked: false, comments: [] };
+      }
+      return db[k];
+    }
+
+    function persistPageData() {
+      const reelId = activeReel ? activeReel.id : 'x';
+      const k = reactionsKey(reelId, activePage);
+      const all = loadReactions();
+      all[k] = db[k] || { likes: 0, liked: false, comments: [] };
+      saveReactions(all);
+    }
+
+    async function fetchReactions(reelId, page) {
+      const k = reactionsKey(reelId, page);
+      if (reactionsCache[k]) return reactionsCache[k];
+
+      try {
+        const res = await fetch(apiUrl(`/api/reels/${reelId}/pages/${page}/reactions`), {
+          headers: { ...authHeaders() }
+        });
+        if (!res.ok) throw new Error('bad');
+        const data = await res.json();
+        reactionsCache[k] = data;
+        return data;
+      } catch {
+        const local = loadReactions();
+        const v = local[k] || { likes: 0, liked: false };
+        reactionsCache[k] = v;
+        return v;
+      }
+    }
+
+    async function fetchComments(reelId, page) {
+      const k = reactionsKey(reelId, page);
+      if (commentsCache[k]) return commentsCache[k];
+      try {
+        const res = await fetch(apiUrl(`/api/reels/${reelId}/pages/${page}/comments`));
+        if (!res.ok) throw new Error('bad');
+        const data = await res.json();
+        commentsCache[k] = data.comments || [];
+        return commentsCache[k];
+      } catch {
+        const local = loadReactions();
+        const v = (local[k] && local[k].comments) ? local[k].comments : [];
+        commentsCache[k] = v;
+        return v;
+      }
     }
 
     function startLoadbar() {
@@ -462,6 +592,9 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
+          if (data.error === 'user_not_found') return setAuthError('Bu e-posta ile kayıt bulunamadı. Kayıt olmayı dene.');
+          if (data.error === 'wrong_password') return setAuthError('Şifre yanlış. Tekrar dene.');
+          if (data.error === 'email_taken') return setAuthError('Bu e-posta zaten kayıtlı. Giriş yapmayı dene.');
           return setAuthError(data.error || 'Hata oluştu.');
         }
 
@@ -481,7 +614,7 @@
 
     function showAppUI() {
       document.getElementById('auth-screen').style.display = 'none';
-      document.getElementById('sidebar').style.display = 'flex';
+      document.getElementById('actions-overlay').style.display = 'flex';
       document.getElementById('reel-meta').style.display = 'block';
       document.getElementById('user-pill').style.display = 'inline-flex';
       document.getElementById('reel-pill').style.display = 'inline-flex';
@@ -515,7 +648,10 @@
       const meRes = await fetch(apiUrl('/api/me'), {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!meRes.ok) return;
+      if (!meRes.ok) {
+        localStorage.removeItem(STORAGE_TOKEN_KEY);
+        return;
+      }
       const me = await meRes.json();
       document.getElementById('user-email').innerText = me.email;
       await loadReelsAndShow();
@@ -552,6 +688,32 @@
       await renderAround(activePage);
       setLoadbarProgress(100);
       stopLoadbar();
+      await syncPageFromBackend();
+    }
+
+    async function syncPageFromBackend() {
+      if (!activeReel) return;
+      const reelId = activeReel.id;
+      const page = activePage;
+      const k = reactionsKey(reelId, page);
+
+      const [rx, cmts] = await Promise.all([
+        fetchReactions(reelId, page),
+        fetchComments(reelId, page)
+      ]);
+
+      db[k] = db[k] || { likes: 0, liked: false, comments: [] };
+      db[k].likes = Number(rx.likes || 0);
+      db[k].liked = !!rx.liked;
+      db[k].comments = Array.isArray(cmts) ? cmts.map(c => ({
+        user: c.user || 'kullanici',
+        text: c.text || '',
+        time: c.created_at ? new Date(c.created_at).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : 'Şimdi'
+      })) : [];
+
+      persistPageData();
+      updateUIState();
+      renderComments();
     }
 
     const observer = new IntersectionObserver((entries) => {
@@ -560,6 +722,7 @@
           activePage = parseInt(e.target.dataset.id);
           updateUIState();
           renderAround(activePage);
+          syncPageFromBackend();
         }
       });
     }, { threshold: 0.6 });
@@ -651,31 +814,80 @@
 
     function toggleLike() {
       if (isGuest) return;
-      if (!db[activePage]) db[activePage] = { likes: 0, liked: false, comments: [] };
-      const pageData = db[activePage];
+      const pageData = getPageData();
+      if (!activeReel) return;
+      const reelId = activeReel.id;
+      const page = activePage;
+
+      // optimistic
+      const prevLiked = pageData.liked;
       pageData.liked = !pageData.liked;
       pageData.likes += pageData.liked ? 1 : -1;
-
-      if (pageData.liked) {
-        const heart = document.createElement('div');
-        heart.className = 'heart-pop';
-        heart.innerHTML = '❤️';
-        document.body.appendChild(heart);
-        setTimeout(() => heart.remove(), 800);
-      }
       updateUIState();
+      persistPageData();
+
+      if (pageData.liked) fireHeartOverlay();
+
+      fetch(apiUrl(`/api/reels/${reelId}/pages/${page}/like`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() }
+      })
+        .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
+        .then(({ ok, j }) => {
+          if (!ok) throw new Error('bad');
+          pageData.likes = Number(j.likes || pageData.likes);
+          pageData.liked = !!j.liked;
+          const k = reactionsKey(reelId, page);
+          reactionsCache[k] = { likes: pageData.likes, liked: pageData.liked };
+          persistPageData();
+          updateUIState();
+        })
+        .catch(() => {
+          // rollback
+          pageData.liked = prevLiked;
+          pageData.likes += prevLiked ? 1 : -1;
+          persistPageData();
+          updateUIState();
+        });
     }
 
     function updateUIState() {
-      const pageData = db[activePage] || { likes: 0, liked: false, comments: [] };
-      const likeBtn = document.getElementById('like-btn');
-      likeBtn.classList.toggle('is-liked', pageData.liked);
+      const pageData = getPageData();
+      const likeChip = document.getElementById('like-chip');
+      likeChip.classList.toggle('chip-liked', pageData.liked);
       document.getElementById('like-count').innerText = pageData.likes;
       document.getElementById('c-count').innerText = (pageData.comments || []).length;
     }
 
+    function fireHeartOverlay() {
+      const el = document.createElement('div');
+      el.className = 'ig-heart';
+      el.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 21s-7.2-4.6-9.6-8.5C.4 9 2.4 5.5 6.2 5.2c2.1-.2 3.6 1 4.6 2.2 1-1.2 2.5-2.4 4.6-2.2 3.8.3 5.8 3.8 3.8 7.3C19.2 16.4 12 21 12 21Z" fill="#ff2d55"/>
+        </svg>
+      `;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 950);
+
+      // small burst
+      const cx = window.innerWidth - 41;
+      const cy = window.innerHeight - 170;
+      for (let i = 0; i < 8; i++) {
+        const d = document.createElement('div');
+        d.className = 'burst-dot';
+        d.style.left = `${cx}px`;
+        d.style.top = `${cy}px`;
+        const ang = (Math.PI * 2 * i) / 8;
+        const dist = 18 + Math.random() * 22;
+        d.style.setProperty('--dx', `${Math.cos(ang) * dist}px`);
+        d.style.setProperty('--dy', `${Math.sin(ang) * dist}px`);
+        document.body.appendChild(d);
+        setTimeout(() => d.remove(), 560);
+      }
+    }
+
     function openComments() {
-      if (isGuest) return;
       document.getElementById('comment-drawer').classList.add('active');
       document.getElementById('overlay').style.display = 'block';
       renderComments();
@@ -691,21 +903,42 @@
       const input = document.getElementById('c-input');
       if (!input.value.trim()) return;
 
-      if (!db[activePage]) db[activePage] = { likes: 0, liked: false, comments: [] };
-      db[activePage].comments.push({
-        user: 'kullanici',
-        text: input.value,
-        time: 'Şimdi'
-      });
+      if (!activeReel) return;
+      const reelId = activeReel.id;
+      const page = activePage;
+      const text = input.value.trim();
+
+      const pageData = getPageData();
+
+      // optimistic
+      pageData.comments.push({ user: 'sen', text, time: 'Şimdi' });
       input.value = '';
+      persistPageData();
       updateUIState();
       renderComments();
+
+      fetch(apiUrl(`/api/reels/${reelId}/pages/${page}/comments`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ text })
+      })
+        .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
+        .then(({ ok, j }) => {
+          if (!ok) throw new Error('bad');
+          commentsCache[reactionsKey(reelId, page)] = null;
+          return syncPageFromBackend();
+        })
+        .catch(() => {
+          // fallback: just refresh from backend
+          syncPageFromBackend();
+        });
     }
 
     function renderComments() {
       const list = document.getElementById('comment-list');
       list.innerHTML = '';
-      const comments = (db[activePage] && db[activePage].comments) ? db[activePage].comments : [];
+      const pageData = getPageData();
+      const comments = pageData.comments || [];
 
       comments.forEach(c => {
         const div = document.createElement('div');
@@ -720,6 +953,10 @@
         list.appendChild(div);
       });
       list.scrollTop = list.scrollHeight;
+
+      const input = document.getElementById('c-input');
+      input.disabled = isGuest;
+      input.placeholder = isGuest ? 'Misafir modunda yorum yazılamaz.' : 'Yorum ekle...';
     }
 
     document.addEventListener('click', (e) => {
@@ -731,7 +968,8 @@
     (async () => {
       await boot();
       if (!getToken()) {
-        // Token yoksa auth ekranında kal; kullanıcı isterse misafir devam edebilir.
+        // Token yoksa ya da geçersizse misafir gibi devam edilebilir.
+        // Kullanıcı isterse login/register yapar.
       }
     })();
   </script>
